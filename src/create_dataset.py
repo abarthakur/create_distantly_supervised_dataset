@@ -410,7 +410,7 @@ if __name__ == "__main__":
     if not warc_file_directory.endswith("/"):
        warc_file_directory=warc_file_directory+"/"
 
-    warc_to_tsv(warc_file_directory,output_file_directory+"sentences/",int(sys.argv[3]),int(sys.argv[4]),sparql)
+    warc_to_tsv(warc_file_directory,output_file_directory,int(sys.argv[3]),int(sys.argv[4]),sparql)
 
     # rel={}
     # findRelations(rel,"../data/raw/output/task_1.warc.gz.freebase.tsv",sparql)
