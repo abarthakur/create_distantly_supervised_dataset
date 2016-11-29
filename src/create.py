@@ -36,7 +36,11 @@ def checkEntity(sparql,link,name):
             } LIMIT 100''')
     sparql.setQuery(query2)
     sparql.setReturnFormat(SPARQLWrapper.JSON)
-    results= sparql.query().convert()
+    try :
+        results= sparql.query().convert()
+    except Exception:
+        print("Ill formed request")
+        return ([],"")
     for result in results["results"]["bindings"]:
         # print("label: ",result["entity_label"]["value"])
         labels.append(result["entity_label"]["value"])
@@ -59,10 +63,14 @@ def checkRelations(sparql,entities):
             #query for which relations
             query=('''prefix : <http://rdf.freebase.com/ns/>\nselect distinct ?rel {'''
                     "<"+e1["fbmid"] +"> ?rel <"+e2["fbmid"]+">\n}")
-            print("Querying relation between "+e1["link"]+" , "+e2["link"])
+            # print("Querying relation between "+e1["link"]+" , "+e2["link"])
             sparql.setQuery(query)
             sparql.setReturnFormat(SPARQLWrapper.JSON)
-            results= sparql.query().convert()
+            try :
+                results= sparql.query().convert()
+            except Exception:
+                print("Ill formed request")
+                break
             for result in results["results"]["bindings"]:
                 print("Relation :"+result["rel"]["value"])
                 rel= result["rel"]["value"]
@@ -72,7 +80,7 @@ def checkRelations(sparql,entities):
     return relations
 
 
-def create(wiki_file_directory,target_directory):
+def create(wiki_file_directory,target_directory,refresh):
     if not os.path.exists(target_directory):
         os.makedirs(target_directory)
     tagger = PerceptronTagger() 
@@ -113,6 +121,8 @@ def create(wiki_file_directory,target_directory):
                             for c in link1 :
                                 if c==" ":
                                     c="_"
+                                if c=="#":
+                                    break
                                 chars.append(c)
                             link="".join(chars)
                             print(link)
@@ -150,4 +160,5 @@ if __name__ == "__main__":
 
     target_file_directory=sys.argv[2]
     wiki_file_directory = sys.argv[1]
-    create(wiki_file_directory,target_file_directory)
+    refresh=sys.argv[3] #not implemented
+    create(wiki_file_directory,target_file_directory,refresh==1)
