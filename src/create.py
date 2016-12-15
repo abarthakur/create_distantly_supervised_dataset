@@ -93,6 +93,86 @@ def checkRelations(sparql,entities):
     return relations
 
 
+
+def process_file(wiki_file_path,sparql,tagger,sent_count,target_subdir,file):
+
+    f=open(wiki_file_path,"r")
+    print("processing "+wiki_file_path)
+    logfile.write("processing "+wiki_file_path)
+    sent_no=0
+    sents=[]
+    docurl=""
+    docname=""
+    for line in f:
+        #end of an old doc
+        if (line.startswith("</doc>")):
+            continue
+        #beginning of a new doc
+        if(line.startswith("<doc")):
+            soup=BeautifulSoup(line,"html.parser")
+            docurl=soup.contents[0]["url"]
+            docname=soup.contents[0]["title"]
+
+        sent_no+=1
+
+        sent_count+=1
+
+        sent={}
+        tokens=[]
+        entities=[]
+        word_position=0
+        soup = BeautifulSoup(line,"html.parser")
+        for content in soup.contents:
+            string=content.string
+            #skip empty strings
+            if not string:
+                continue
+            #tokenize the content of the tag
+            toks= nltk.word_tokenize(string)
+            tokens+=toks
+            #if string was contained inside a <a> tag, consider it to be an entity
+            if content.name =="a":
+                entity={}
+                link1= urllib.parse.unquote(content["href"])
+                print("url1 : "+link1,file=logfile)
+                chars=[]
+                #replace spaces in the url with underscores
+                #note that these are relative urls
+                for character in link1 :
+                    if character==" ":
+                        character="_"
+                    chars.append(character)
+                link="".join(chars)
+                print("url2 : " + link,file=logfile)
+                name=content.string
+                #add entity attributes
+                entity["start"]=word_position
+                entity["end"]=word_position+len(toks)
+                entity["link"]=link
+                entity["name"]=name
+                (entity["labels"],entity["fbmid"])=checkEntity(sparql,link,name)
+                entities.append(entity)
+            word_position+=len(toks)
+
+        tags = tagger.tag(tokens)
+        tags2=[]
+        for tag in tags:
+            tags2.append(tag[1])
+        sent["sentid"]=sent_no
+        sent["tokens"]=tokens
+        sent["tags"]=tags2
+        sent["mentions"]=entities
+        sent["relations"]=checkRelations(sparql,entities)
+        sent["docname"]=docname
+        sent["docurl"]=docurl
+        sents.append(sent)
+    if not os.path.exists(target_subdir):
+        os.makedirs(target_subdir)
+    with open(target_subdir+ "/"+file+".json","w") as jf:
+        json.dump(sents,jf)
+    f.close()
+    return sent_count
+
 ''' Takes path to directory with folders and files extracted using WikiExtractor
     and path to output directory as inputs. Writes the sentences with required extracted information
     as Json files in output directory. 
@@ -101,117 +181,57 @@ def checkRelations(sparql,entities):
     python WikiExtractor.py -l enwiki-20160920-pages-articles-multistream.xml
 
 '''
-def create(wiki_file_directory,target_directory,skip):
+def create(wiki_directory,target_directory,subdir_start,subdir_end,process_no):
     global no_sents
     global logfile
-    logfile=open("log.txt","a")
-    stopper=0
+    subdir_count=0
+    sent_count=0
+
+    logfile=open("../log"+str(process_no)+".txt","a")
+
     if not os.path.exists(target_directory):
         os.makedirs(target_directory)
+
     tagger = PerceptronTagger() 
     sparql = SPARQLWrapper.SPARQLWrapper("http://localhost:8890/sparql/")
-    print("processing "+wiki_file_directory)
-    logfile.write("processing "+wiki_file_directory+"\n")
-    for subdir in os.listdir(wiki_file_directory):
-        wiki_sub_directory=wiki_file_directory+"/"+subdir
-        if (os.path.isdir(wiki_sub_directory)):
-            print("processing "+wiki_sub_directory)
-            logfile.write("processing "+wiki_sub_directory+"\n")
-            wiki_files=os.listdir(wiki_file_directory+"/"+subdir)
-            for file in wiki_files:
-                wiki_file_path=wiki_sub_directory+"/"+file
-                f=open(wiki_file_path,"r")
-                print("processing "+wiki_file_path)
-                logfile.write("processing "+wiki_file_path)
-                sent_no=0
-                sents=[]
-                docurl=""
-                docname=""
-                for line in f:
-                    #end of an old doc
-                    if (line.startswith("</doc>")):
-                        continue
-                    #beginning of a new doc
-                    if(line.startswith("<doc")):
-                        soup=BeautifulSoup(line,"html.parser")
-                        docurl=soup.contents[0]["url"]
-                        docname=soup.contents[0]["title"]
 
-                    sent_no+=1
+    print("processing "+wiki_directory)
+    logfile.write("processing "+wiki_directory+"\n")
 
-                    #for testing purposes
-                    stopper+=1
-                    # print(stopper)
-                    #skip "skip" no of sentences
-                    if(stopper < skip):
-                        continue
-                    
-                    sent={}
-                    tokens=[]
-                    entities=[]
-                    word_position=0
-                    soup = BeautifulSoup(line,"html.parser")
-                    for content in soup.contents:
-                        string=content.string
-                        #skip empty strings
-                        if not string:
-                            continue
-                        #tokenize the content of the tag
-                        toks= nltk.word_tokenize(string)
-                        tokens+=toks
-                        #if string was contained inside a <a> tag, consider it to be an entity
-                        if content.name =="a":
-                            entity={}
-                            link1= urllib.parse.unquote(content["href"])
-                            print("url1 : "+link1,file=logfile)
-                            chars=[]
-                            #replace spaces in the url with underscores
-                            #note that these are relative urls
-                            for character in link1 :
-                                if character==" ":
-                                    character="_"
-                                chars.append(character)
-                            link="".join(chars)
-                            print("url2 : " + link,file=logfile)
-                            name=content.string
-                            #add entity attributes
-                            entity["start"]=word_position
-                            entity["end"]=word_position+len(toks)
-                            entity["link"]=link
-                            entity["name"]=name
-                            (entity["labels"],entity["fbmid"])=checkEntity(sparql,link,name)
-                            entities.append(entity)
-                        word_position+=len(toks)
+    for subdir in os.listdir(wiki_directory):
+        wiki_sub_directory=wiki_directory+"/"+subdir
+        if not os.path.isdir(wiki_sub_directory):
+            continue
+        #process only subdirs from subdir_start to subdir_end
+        if(subdir_count < subdir_start):
+            subdir_count+=1
+            print("skipping "+wiki_sub_directory)
+            logfile.write("skipping "+wiki_sub_directory)
+            continue
+        if subdir_count >= subdir_end :
+            break
 
-                    tags = tagger.tag(tokens)
-                    tags2=[]
-                    for tag in tags:
-                        tags2.append(tag[1])
-                    sent["sentid"]=sent_no
-                    sent["tokens"]=tokens
-                    sent["tags"]=tags2
-                    sent["mentions"]=entities
-                    sent["relations"]=checkRelations(sparql,entities)
-                    sent["docname"]=docname
-                    sent["docurl"]=docurl
-                    sents.append(sent)
-                if not os.path.exists(target_directory+"/"+subdir):
-                    os.makedirs(target_directory+"/"+subdir)
-                with open(target_directory+"/"+subdir+"/"+file+".json","w") as jf:
-                    json.dump(sents,jf)
-                
-                #stop after single file
-                return
-    no_sents=stopper
-    close(logfile)
+        print("processing "+wiki_sub_directory)
+        logfile.write("processing "+wiki_sub_directory+"\n")
+        for file in os.listdir(wiki_directory+"/"+subdir):
+            wiki_file_path=wiki_sub_directory+"/"+file
+            target_subdir=target_directory+"/"+subdir
+            sent_count=process_file(wiki_file_path,sparql,tagger,sent_count,target_subdir,file)
+            file_count+=1
+            #stop after single file
+            # return
+    no_sents=sent_count
+    logfile.close()
 
 
 if __name__ == "__main__":
 
-    target_file_directory=sys.argv[2]
-    wiki_file_directory = sys.argv[1]
-    skip=int(sys.argv[3]) #not implemented
-    create(wiki_file_directory,target_file_directory,skip)
+    target_directory=sys.argv[2]
+    wiki_directory = sys.argv[1]
+    subdir_start=int(sys.argv[3])
+    subdir_end=int(sys.argv[4])
+    process_no=int(sys.argv[5])
+    create(wiki_directory,target_directory,subdir_start,subdir_end,process_no)
     with open("stats.txt","w") as f :
         f.write("No of Sentences :"+str(no_sents))
         f.write("No of entities linked to freebase :"+str(mid_found))
