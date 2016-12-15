@@ -12,38 +12,35 @@ mid_found=0
 mid_not_found=0
 no_sents=0
 no_relations=0
+logfile=None
 
 def checkEntity(sparql,link,name):
     global mid_found
     global mid_not_found
+    global logfile
     fbmid=""
     link2 = "http://en.wikipedia.org/wiki/"+link
-    # print(link2)
-    # print("querying ",link2)
     query= ('''prefix : <http://rdf.freebase.com/ns/>
             select distinct ?entity {
             ?entity <http://rdf.freebase.com/ns/common.topic.topic_equivalent_webpage> <'''+link2+"> \n"
             '''} LIMIT 100''')
-    # print (query)
     sparql.setQuery(query)
     sparql.setReturnFormat(SPARQLWrapper.JSON)
     try :
         results= sparql.query().convert()
     except SPARQLWrapper.SPARQLExceptions.QueryBadFormed:
-        print("Bad Request")
-        print (query)
+        print("Bad Request",file=logfile)
+        print (query,file=logfile)
         with open("badreqs.txt","a") as f:
             f.write(link2+"\n")
         return ([],"")
     if (len(results["results"]["bindings"])>=1):#should be a unique mid per page?
         result = results["results"]["bindings"][0]
-        # print("mid: ",result["entity"]["value"])
         fbmid=result["entity"]["value"]
-        print("mid found.")
+        print("mid found.",file=logfile)
         mid_found+=1
     else :
-        # print("More than one, or less than one mid maps to this webpage. No. of mids : ",len(results["results"]["bindings"]))
-        print("no mids found.")
+        print("no mids found.",file=logfile)
         mid_not_found+=1
         return ([],"")
 
@@ -64,7 +61,7 @@ def checkEntity(sparql,link,name):
 '''Queries for relations between all pairs of entities in given list. Called for every sentence.''' 
 def checkRelations(sparql,entities):
     global no_relations
-    print("checking for relations")
+    print("checking for relations",file=logfile)
     relations=[]
     #take every combination of entities
     for e1 in entities:
@@ -106,36 +103,49 @@ def checkRelations(sparql,entities):
 '''
 def create(wiki_file_directory,target_directory,skip):
     global no_sents
+    global logfile
+    logfile=open("log.txt","a")
     stopper=0
     if not os.path.exists(target_directory):
         os.makedirs(target_directory)
     tagger = PerceptronTagger() 
     sparql = SPARQLWrapper.SPARQLWrapper("http://localhost:8890/sparql/")
     print("processing "+wiki_file_directory)
+    logfile.write("processing "+wiki_file_directory+"\n")
     for subdir in os.listdir(wiki_file_directory):
         wiki_sub_directory=wiki_file_directory+"/"+subdir
         if (os.path.isdir(wiki_sub_directory)):
             print("processing "+wiki_sub_directory)
+            logfile.write("processing "+wiki_sub_directory+"\n")
             wiki_files=os.listdir(wiki_file_directory+"/"+subdir)
             for file in wiki_files:
                 wiki_file_path=wiki_sub_directory+"/"+file
                 f=open(wiki_file_path,"r")
                 print("processing "+wiki_file_path)
-                #the first line describes the document
-                docline=f.readline()
-                soup=BeautifulSoup(docline,"html.parser")
-                docurl=soup.contents[0]["url"]
-                docname=soup.contents[0]["title"]
-                #begin processing the sentences in the document
-                lineno=0
+                logfile.write("processing "+wiki_file_path)
+                sent_no=0
                 sents=[]
+                docurl=""
+                docname=""
                 for line in f:
+                    #end of an old doc
+                    if (line.startswith("</doc>")):
+                        continue
+                    #beginning of a new doc
+                    if(line.startswith("<doc")):
+                        soup=BeautifulSoup(line,"html.parser")
+                        docurl=soup.contents[0]["url"]
+                        docname=soup.contents[0]["title"]
+
+                    sent_no+=1
+
+                    #for testing purposes
                     stopper+=1
-                    print(stopper)
-                    #skip "skip" no of lines
+                    # print(stopper)
+                    #skip "skip" no of sentences
                     if(stopper < skip):
                         continue
-                    lineno+=1
+                    
                     sent={}
                     tokens=[]
                     entities=[]
@@ -153,7 +163,7 @@ def create(wiki_file_directory,target_directory,skip):
                         if content.name =="a":
                             entity={}
                             link1= urllib.parse.unquote(content["href"])
-                            print("url1 : "+link1)
+                            print("url1 : "+link1,file=logfile)
                             chars=[]
                             #replace spaces in the url with underscores
                             #note that these are relative urls
@@ -162,7 +172,7 @@ def create(wiki_file_directory,target_directory,skip):
                                     character="_"
                                 chars.append(character)
                             link="".join(chars)
-                            print("url2 : " + link)
+                            print("url2 : " + link,file=logfile)
                             name=content.string
                             #add entity attributes
                             entity["start"]=word_position
@@ -177,7 +187,7 @@ def create(wiki_file_directory,target_directory,skip):
                     tags2=[]
                     for tag in tags:
                         tags2.append(tag[1])
-                    sent["sentid"]=lineno
+                    sent["sentid"]=sent_no
                     sent["tokens"]=tokens
                     sent["tags"]=tags2
                     sent["mentions"]=entities
@@ -189,7 +199,11 @@ def create(wiki_file_directory,target_directory,skip):
                     os.makedirs(target_directory+"/"+subdir)
                 with open(target_directory+"/"+subdir+"/"+file+".json","w") as jf:
                     json.dump(sents,jf)
+                
+                #stop after single file
+                return
     no_sents=stopper
+    close(logfile)
 
 
 if __name__ == "__main__":
@@ -199,7 +213,7 @@ if __name__ == "__main__":
     skip=int(sys.argv[3]) #not implemented
     create(wiki_file_directory,target_file_directory,skip)
     with open("stats.txt","w") as f :
-        f.write("No of Sentences :"+no_sents)
-        f.write("No of entities linked to freebase :"+mid_found)
-        f.write("No of entities not found in freebase :"+mid_not_found)
-        f.write("No of relations :"+no_relations)
+        f.write("No of Sentences :"+str(no_sents))
+        f.write("No of entities linked to freebase :"+str(mid_found))
+        f.write("No of entities not found in freebase :"+str(mid_not_found))
+        f.write("No of relations :"+str(no_relations))
