@@ -99,8 +99,11 @@ def process_file(wiki_file_path,sparql,tagger,sent_count,target_subdir,file):
     f=open(wiki_file_path,"r")
     print("processing "+wiki_file_path)
     logfile.write("processing "+wiki_file_path)
+
+    if not os.path.exists(target_subdir):
+        os.makedirs(target_subdir)
+    jf=open(target_subdir+ "/"+file+".json","w")
     sent_no=0
-    sents=[]
     docurl=""
     docname=""
     for line in f:
@@ -167,13 +170,9 @@ def process_file(wiki_file_path,sparql,tagger,sent_count,target_subdir,file):
         sent["relations"]=checkRelations(sparql,entities)
         sent["docname"]=docname
         sent["docurl"]=docurl
-        sents.append(sent)
-    
-    if not os.path.exists(target_subdir):
-        os.makedirs(target_subdir)
-    with open(target_subdir+ "/"+file+".json","w") as jf:
-        json.dump(sents,jf)
+        jf.write(json.dumps(sent)+"\n")    
     f.close()
+    jf.close()
     return sent_count
 
 ''' Takes path to directory with folders and files extracted using WikiExtractor
@@ -220,9 +219,8 @@ def create(wiki_directory,target_directory,subdir_start,subdir_end,process_no):
             wiki_file_path=wiki_sub_directory+"/"+file
             target_subdir=target_directory+"/"+subdir
             sent_count=process_file(wiki_file_path,sparql,tagger,sent_count,target_subdir,file)
-            file_count+=1
-            #stop after single file
-            # return
+            # stop after single file
+            return
     no_sents=sent_count
     logfile.close()
 
