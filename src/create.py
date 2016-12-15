@@ -95,10 +95,10 @@ def checkRelations(sparql,entities):
 
 
 def process_file(wiki_file_path,sparql,tagger,sent_count,target_subdir,file):
-
+    global logfile
     f=open(wiki_file_path,"r")
     print("processing "+wiki_file_path)
-    logfile.write("processing "+wiki_file_path)
+    logfile.write("processing "+wiki_file_path+"\n")
 
     if not os.path.exists(target_subdir):
         os.makedirs(target_subdir)
@@ -189,7 +189,7 @@ def create(wiki_directory,target_directory,subdir_start,subdir_end,process_no):
     subdir_count=0
     sent_count=0
 
-    logfile=open("../log"+str(process_no)+".txt","a")
+    logfile=open("../logs/log"+str(process_no)+".txt","w")
 
     if not os.path.exists(target_directory):
         os.makedirs(target_directory)
@@ -207,8 +207,8 @@ def create(wiki_directory,target_directory,subdir_start,subdir_end,process_no):
         #process only subdirs from subdir_start to subdir_end
         if(subdir_count < subdir_start):
             subdir_count+=1
-            print("skipping "+wiki_sub_directory)
-            logfile.write("skipping "+wiki_sub_directory)
+            # print("skipping "+wiki_sub_directory)
+            logfile.write("skipping "+wiki_sub_directory+"\n")
             continue
         if subdir_count >= subdir_end :
             break
@@ -220,7 +220,7 @@ def create(wiki_directory,target_directory,subdir_start,subdir_end,process_no):
             target_subdir=target_directory+"/"+subdir
             sent_count=process_file(wiki_file_path,sparql,tagger,sent_count,target_subdir,file)
             # stop after single file
-            return
+            # return
     no_sents=sent_count
     logfile.close()
 
