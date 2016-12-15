@@ -154,6 +154,8 @@ def process_file(wiki_file_path,sparql,tagger,sent_count,target_subdir,file):
                 entities.append(entity)
             word_position+=len(toks)
 
+        if len(tokens)==0:
+            continue
         tags = tagger.tag(tokens)
         tags2=[]
         for tag in tags:
@@ -166,6 +168,7 @@ def process_file(wiki_file_path,sparql,tagger,sent_count,target_subdir,file):
         sent["docname"]=docname
         sent["docurl"]=docurl
         sents.append(sent)
+    
     if not os.path.exists(target_subdir):
         os.makedirs(target_subdir)
     with open(target_subdir+ "/"+file+".json","w") as jf:
