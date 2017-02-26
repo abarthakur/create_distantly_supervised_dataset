@@ -1,5 +1,4 @@
-import nltk
-from nltk.tag.perceptron import PerceptronTagger
+from functools import partial
 from bs4 import BeautifulSoup,Tag
 import urllib
 import SPARQLWrapper
@@ -7,10 +6,43 @@ import os
 import json
 import sys
 from SPARQLWrapper.SPARQLExceptions import QueryBadFormed, EndPointNotFound
+from stanza.nlp.corenlp import CoreNLPClient
+from spotlight import annotate, SpotlightException
+
+def dbpediaEntities(text, dbpedia_port='9999'):
+    """
+    Query dbpedia.
+    """
+    api = partial(annotate,
+                  'http://localhost:'+ dbpedia_port + '/rest/annotate',
+                  confidence=0.35,
+                  support=10)
+    try:
+        results = api(text)
+    # if no entities found
+    except SpotlightException:
+        results = []
+    # any other error
+    except:
+        print("BAD REQUEST:DBPEDIA" , text)
+        results = []
+
+    entities = []
+    for result in results:
+        start = result['offset']
+        name = result['surfaceForm']
+        if type(name) != str:
+            name = str(name)
+        end = start + len(name)
+        entities.append({
+            'start' : start,
+            'name' : name,
+            'end' : end
+            })
+    return entities
 
 def getFBmid(sparql, entity_link, name, retry_count=0):
 
-    fbmid=""
     wiki_link = "http://en.wikipedia.org/wiki/"+ entity_link
 
     query= ('''prefix : <http://rdf.freebase.com/ns/>
@@ -37,11 +69,10 @@ def getFBmid(sparql, entity_link, name, retry_count=0):
     if (len(results["results"]["bindings"]) >= 1): #should be a unique mid per page?
         result = results["results"]["bindings"][0]
         # mid found
-        fbmid = result["entity"]["value"]
+        return result["entity"]["value"]
     else:
         # mid not found
         return ''
-    return fbmid
 
 def getEntityLabels(sparql, fbmid, retry_count=0):
     labels = []
@@ -121,15 +152,17 @@ def checkRelations(sparql, entities, retry_count=0):
 
 
 
-def process_file(input_file_path, sparql, tagger, output_file_path):
+def process_file(input_file_path, sparql, corenlp_client, output_file_path):
 
     wiki_file = open(input_file_path, "r", encoding='utf-8')
     output_file = open(output_file_path, 'w', encoding='utf-8')
     
     for line in wiki_file:
+
         #end of an old doc
         if (line.startswith("</doc>")):
             continue
+
         #beginning of a new doc
         if(line.startswith("<doc")):
             soup = BeautifulSoup(line,"html.parser")
@@ -143,46 +176,81 @@ def process_file(input_file_path, sparql, tagger, output_file_path):
             continue
 
         paragraph = {}
-        tokens = []
-        entities = []
-        word_position = 0
         soup = BeautifulSoup(line, "html.parser")
+        para_string = ''
+        offset = 0
+        entities_fb = []
+        paragraph = {}
+        
         for content in soup.contents:
             string = content.string
+
             if not string:
                 continue
-            #tokenize the content of the tag
-            toks= nltk.word_tokenize(string)
-            tokens += toks
+            # replace ’ with '
+            string = string.replace("’", "'")
+
+            para_string += string
+
             #if string was contained inside a <a> tag, consider it to be an entity
             if content.name == "a":
-                entity={}
                 link = urllib.parse.unquote(content["href"])
                 #note that these are relative urls
                 #replace spaces in the url with underscores
                 link = link.replace(' ', '_')
-                name = content.string
-                #add entity attributes
-                entity["start"] = word_position
-                entity["end"] = word_position + len(toks)
-                entity["link"] = link
-                entity["fbmid"] = getFBmid(sparql, link, name)
-                if entity['fbmid']:
-                    entity['labels'] = getEntityLabels(sparql, entity['fbmid'])
+                name = string
+                fbmid = getFBmid(sparql, link, name)
+                if fbmid:
+                    labels = getEntityLabels(sparql, fbmid)
                 else:
-                    entity['labels'] = []
-                entities.append(entity)
-            word_position += len(toks)
+                    labels = []
+                #add entity attributes
+                entities_fb.append({
+                    'start': offset,
+                    'end': offset + len(string),
+                    'link': link,
+                    'name': name,
+                    'fbmid': fbmid, 
+                    'labels': labels
+                    })
+
+            offset += len(string)
+        
+        # remove paragraphs that are very short
+        if offset < 40:
+            continue 
+        # tokens, pos and ner tags
+        annotated = corenlp_client.annotate(para_string)
+        sentences = []
+        sid = 0
+        for sentence in annotated.sentences:
+            tokens = []
+            pos = []
+            ner = []
+            for token in sentence:
+                tokens.append(token.word)
+                pos.append(token.pos)
+                ner.append(token.ner)
+            sentences.append({
+                'tokens' : tokens,
+                'pos' : pos,
+                'ner' : ner,
+                'sid' : sid
+                })
+            sid += 1
+        # Dbpedia annotations
+        entities_db = dbpediaEntities(para_string)
+        paragraph = {
+                'fid' : doc_id,
+                'fname' : doc_name,
+                'furl' : doc_url,
+                'pid' : paragraph_count,
+                'text' : para_string,
+                'fbEMs' : entities_fb,
+                'dbEMs' : entities_db,
+                'sentences' : sentences
+                }
         paragraph_count += 1
-        pos_tags = [x[1] for x in tagger.tag(tokens)]
-        paragraph["paraid"] = paragraph_count
-        paragraph["tokens"] = tokens
-        paragraph["pos"] = pos_tags
-        paragraph["mentions"] = entities
-        paragraph["relations"] = checkRelations(sparql, entities)
-        paragraph["docname"] = doc_name
-        paragraph["docurl"] = doc_url
-        paragraph["fileid"] = doc_id
         output_file.write(json.dumps(paragraph) + "\n")
     wiki_file.close()
     output_file.close()
@@ -200,6 +268,7 @@ if __name__ == "__main__":
     input_file_path = sys.argv[1]
     output_file_path = sys.argv[2]
 
-    tagger = PerceptronTagger() 
+    corenlp_client = CoreNLPClient(server='http://localhost:9000', default_annotators=['ssplit', 'tokenize', 'lemma', 'pos', 'ner'])
+
     sparql = SPARQLWrapper.SPARQLWrapper("http://localhost:8890/sparql/")
-    process_file(input_file_path, sparql, tagger, output_file_path)
+    process_file(input_file_path, sparql, corenlp_client, output_file_path)
