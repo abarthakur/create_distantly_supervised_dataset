@@ -194,25 +194,29 @@ def process_file(input_file_path, sparql, corenlp_client, output_file_path):
 
             #if string was contained inside a <a> tag, consider it to be an entity
             if content.name == "a":
-                link = urllib.parse.unquote(content["href"])
-                #note that these are relative urls
-                #replace spaces in the url with underscores
-                link = link.replace(' ', '_')
-                name = string
-                fbmid = getFBmid(sparql, link, name)
-                if fbmid:
-                    labels = getEntityLabels(sparql, fbmid)
-                else:
-                    labels = []
-                #add entity attributes
-                entities_fb.append({
-                    'start': offset,
-                    'end': offset + len(string),
-                    'link': link,
-                    'name': name,
-                    'fbmid': fbmid, 
-                    'labels': labels
-                    })
+                try:
+                    link = urllib.parse.unquote(content["href"])
+
+                    #note that these are relative urls
+                    #replace spaces in the url with underscores
+                    link = link.replace(' ', '_')
+                    name = string
+                    fbmid = getFBmid(sparql, link, name)
+                    if fbmid:
+                        labels = getEntityLabels(sparql, fbmid)
+                    else:
+                        labels = []
+                    #add entity attributes
+                    entities_fb.append({
+                        'start': offset,
+                        'end': offset + len(string),
+                        'link': link,
+                        'name': name,
+                        'fbmid': fbmid, 
+                        'labels': labels
+                        })
+                except KeyError:
+                    pass
 
             offset += len(string)
         
