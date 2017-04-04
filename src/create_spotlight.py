@@ -15,6 +15,10 @@ def spot_entities(text, api):
     for result in results:
         start = result['offset']
         name = result.get('surfaceForm', 0)
+        types = result['types'].split(',')
+        labels = [x[len('DBpedia:'):] for x in types if 'DBpedia:' in x]
+        if not labels:
+            labels.append('None')
         # some time surface form is missing from result
         # ignore them
         if name:
@@ -24,7 +28,8 @@ def spot_entities(text, api):
             entities.append({
                 'start' : start,
                 'name' : name,
-                'end' : end
+                'end' : end,
+                'labels' : labels
                 })
     return entities
 
