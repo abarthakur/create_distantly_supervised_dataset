@@ -1,5 +1,15 @@
 """
-Parse wiki data parsed by Wikiextractor to contever infolinks to DBpedia labels.
+Parse wiki data parsed by Wikiextractor to convert infolinks to DBpedia labels.
+
+## This will remove the paragraphs that satisfy the following conditions.
+
+1.  All paragraphs that contain at-least one infolink that has not been mapped in DBpedia Ontology.
+    This can be categorized into two parts:
+    a)  Infolinks that are not present in DBpedia.
+    b)  Infolinks that are present but not mapped to DBpedia Ontology.
+
+2.  Paragraphs in which Infolinks are absent.
+
 """
 import sys
 import urllib
@@ -8,6 +18,7 @@ from bs4 import BeautifulSoup
 import SPARQLWrapper
 from SPARQLWrapper.SPARQLExceptions import EndPointNotFound
 
+#pylint:disable=invalid-name
 def getDBpediaLabels(sparql, link, name, retry_count=0):
     """
     Get raw labels given by DBpedia.
@@ -68,6 +79,7 @@ def parse_raw_labels(data):
         all_labels.append('None')
     return all_labels
 
+#pylint:disable=too-many-locals,too-many-branches,too-many-statements
 def process_file(input_file_path, sparql, output_file_path):
     """
     Process a single Wikiextractor output file.
@@ -86,8 +98,6 @@ def process_file(input_file_path, sparql, output_file_path):
         #beginning of a new doc
         if line.startswith("<doc"):
             soup = BeautifulSoup(line, "html.parser")
-            doc_url = soup.contents[0]["url"]
-            doc_name = soup.contents[0]["title"]
             doc_id = soup.contents[0]["id"]
             paragraph_count = 0
             continue
