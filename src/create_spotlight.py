@@ -10,7 +10,12 @@ def spot_entities(text, api):
     """
     Query dbpedia.
     """
-    results = api(text)
+    valid = True
+    try:
+        results = api(text)
+    except:
+        valid = False
+        results = []
     entities = []
     for result in results:
         start = result['offset']
@@ -31,7 +36,7 @@ def spot_entities(text, api):
                 'end' : end,
                 'labels' : labels
                 })
-    return entities
+    return entities, valid
 
 #pylint:disable=invalid-name
 def process_file(input_file_path, spotlight_api, output_file_path):
@@ -47,16 +52,20 @@ def process_file(input_file_path, spotlight_api, output_file_path):
         infoEMs = json_data['infoEMs']
         pid = json_data['pid']
         fid = json_data['fid']
-        spoted_entities = spot_entities(text, spotlight_api)
-        output_file.write(
-            json.dumps({
-                'text': text,
-                'infoEMs': infoEMs,
-                'spotEMs': spoted_entities,
-                'pid': pid,
-                'fid': fid
-            }) + '\n'
-        )
+        spoted_entities, valid_flag = spot_entities(text, spotlight_api)
+        if valid_flag:
+            output_file.write(
+                json.dumps({
+                    'text': text,
+                    'infoEMs': infoEMs,
+                    'spotEMs': spoted_entities,
+                    'pid': pid,
+                    'fid': fid
+                }) + '\n'
+            )
+        else:
+            # print lines on stdout such that it can be logged.
+            print(line)
     wiki_file.close()
     output_file.close()
 
