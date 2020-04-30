@@ -2,6 +2,8 @@
 
 This project contains code to annotate the Wikipedia Corpus with DBPedia. It takes doc files created by ``wikiextractor`` and queries all hyperlinked words in it to check if they are entities. Thereafter checks all pairs of entities in a sentence by querying if they have relations between them.
 
+See [this link](https://github.com/sameersingh/nlp_serde/wiki/Virtuoso-Freebase-Setup) to load Freebase into Virtuoso for a SPARQL endpoint - to use with this code.
+
 ## Usage
 
 1. Download XML dumps of Wikipedia from [here](https://dumps.wikimedia.org/) and place in data/raw
